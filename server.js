@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import { loginRoute } from "./routes/loginRoute.js";
 import { createUserRoute } from "./routes/userRoutes.js";
 import { markAttendance, getAttendance, getAttendanceSummary } from "./routes/attendanceRoutes.js";
-import { userList } from "./routes/userlist.js";
+import { userList } from "./routes/userList.js";
 import { markStudentMarks, getStudentMarks } from "./routes/marksRoute.js";
 import { assignmentRoute } from "./routes/assignmentsRoute.js";
 
