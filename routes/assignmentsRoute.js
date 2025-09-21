@@ -24,7 +24,7 @@ function runMulter(req) {
 
 async function fetchStudents() {
   console.log("📡 Fetching student list from API...");
-  const res = await fetch("http://localhost:5000/api/userlist");
+  const res = await fetch("https://student-erp-backend-5qi0.onrender.com/api/userlist");
   if (!res.ok) throw new Error("Failed to fetch students");
   const students = await res.json();
   console.log(`✅ Found ${students.length} students`);
