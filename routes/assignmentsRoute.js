@@ -4,6 +4,7 @@ import multer from "multer";
 import { Readable } from "stream";
 import cloudinary from "../config/cloudinary.js";
 
+// --- Multer setup ---
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
@@ -24,31 +25,18 @@ function runMulter(req) {
 
 // Fetch student list
 async function fetchStudents() {
-  console.log("📡 Fetching student list from API...");
   const res = await fetch("https://student-erp-backend-5qi0.onrender.com/api/userlist");
   if (!res.ok) throw new Error("Failed to fetch students");
-  const students = await res.json();
-  console.log(`✅ Found ${students.length} students`);
-  return students;
+  return await res.json();
 }
 
 // Upload buffer to Cloudinary
 async function uploadBufferToCloudinary(buffer, publicId) {
-  console.log("☁️ Uploading file to Cloudinary:", publicId);
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "auto",
-        public_id: publicId,
-        type: "upload",
-        overwrite: true
-      },
-      (error, result) => {
-        if (error) {
-          console.error("❌ Cloudinary upload failed:", error);
-          return reject(error);
-        }
-        console.log("✅ Cloudinary upload success. Secure URL:", result.secure_url);
+      { resource_type: "auto", public_id: publicId, overwrite: true },
+      (err, result) => {
+        if (err) return reject(err);
         resolve(result);
       }
     );
@@ -56,18 +44,19 @@ async function uploadBufferToCloudinary(buffer, publicId) {
   });
 }
 
-// Send JSON response
+// Send JSON
 function sendJson(res, statusCode, data) {
   if (!res.writableEnded) {
-    console.log(`📤 Sending JSON response: ${statusCode}`, data);
     res.writeHead(statusCode, { "Content-Type": "application/json" });
     res.end(JSON.stringify(data));
   }
 }
 
-// Main route
+// --- Assignment Route ---
 export async function assignmentRoute(req, res) {
   try {
+    console.log("📌 Incoming request:", req.method, req.url);
+
     // --- GET all assignments (admin) ---
     if (req.url === "/assignments" && req.method === "GET") {
       const assignments = await Assignment.find({});
@@ -83,25 +72,20 @@ export async function assignmentRoute(req, res) {
       const assignments = await Assignment.find({}, { name: 1, file: 1, submissions: 1 });
       const result = assignments.map(a => {
         const sub = a.submissions.find(s => String(s.studentId) === String(studentId));
-        const status = sub ? sub.status : "Not Assigned";
         return {
           assignmentId: a._id,
           name: a.name,
           file: a.file,
-          status
+          status: sub ? sub.status : "Not Assigned"
         };
       });
-
       return sendJson(res, 200, result);
     }
 
-    // --- POST new assignment (admin) ---
+    // --- POST new assignment (admin upload) ---
     if (req.url === "/assignments" && req.method === "POST") {
       const file = await runMulter(req);
-      if (!file || !file.buffer || file.buffer.length === 0) {
-        console.error("❌ No file buffer received", file);
-        return sendJson(res, 400, { error: "Empty file. Make sure you selected a file to upload." });
-      }
+      if (!file?.buffer) return sendJson(res, 400, { error: "File is required" });
 
       const assignmentName = req.body?.name || file.originalname;
 
@@ -109,11 +93,6 @@ export async function assignmentRoute(req, res) {
         file.buffer,
         `assignments/${Date.now()}-${file.originalname}`
       );
-
-      if (!cloudResult?.secure_url) {
-        console.error("❌ Cloud upload returned empty URL", cloudResult);
-        return sendJson(res, 500, { error: "Cloud upload failed" });
-      }
 
       const students = await fetchStudents();
 
@@ -134,18 +113,15 @@ export async function assignmentRoute(req, res) {
     }
 
     // --- POST student submission ---
-    if (req.url.startsWith("/assignments/") && req.url.includes("/submit") && req.method === "POST") {
+    if (req.url.includes("/submit") && req.method === "POST") {
       const assignmentId = req.url.split("/")[2];
       if (!assignmentId) return sendJson(res, 400, { error: "Assignment ID is required" });
 
       const file = await runMulter(req);
-      if (!file || !file.buffer || file.buffer.length === 0) {
-        console.error("❌ No file buffer received", file);
-        return sendJson(res, 400, { error: "Empty file. Make sure you selected a file to upload." });
-      }
+      if (!file?.buffer) return sendJson(res, 400, { error: "File is required" });
 
       const studentId = req.body?.studentId;
-      if (!studentId) return sendJson(res, 400, { error: "Student ID is required" });
+      if (!studentId) return sendJson(res, 400, { error: "studentId is required" });
 
       const cloudResult = await uploadBufferToCloudinary(
         file.buffer,
@@ -156,14 +132,8 @@ export async function assignmentRoute(req, res) {
       if (!assignment) return sendJson(res, 404, { error: "Assignment not found" });
 
       let submission = assignment.submissions.find(s => String(s.studentId) === String(studentId));
-
       if (!submission) {
-        submission = {
-          studentId,
-          name: "Unknown",
-          status: "Completed",
-          file: cloudResult.secure_url
-        };
+        submission = { studentId, name: "Unknown", status: "Completed", file: cloudResult.secure_url };
         assignment.submissions.push(submission);
       } else {
         submission.status = "Completed";
@@ -177,7 +147,7 @@ export async function assignmentRoute(req, res) {
     return sendJson(res, 404, { error: "Route not found" });
 
   } catch (err) {
-    console.error("💥 Uncaught error in assignmentRoute:", err);
+    console.error("💥 Error:", err);
     return sendJson(res, 500, { error: err.message });
   }
 }
