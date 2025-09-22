@@ -3,7 +3,6 @@ import fetch from "node-fetch";
 import multer from "multer";
 import { Readable } from "stream";
 import cloudinary from "../config/cloudinary.js";
-// process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -36,10 +35,9 @@ async function uploadBufferToCloudinary(buffer, publicId) {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
-        resource_type: "raw",
+        resource_type: "auto",
         public_id: publicId,
         type: "upload",
-        access_mode: "public",
         overwrite: true
       },
       (error, result) => {
@@ -77,7 +75,7 @@ export async function assignmentRoute(req, res) {
       const studentId = urlObj.searchParams.get("studentId");
       if (!studentId) return sendJson(res, 400, { error: "studentId is required" });
 
-      const assignments = await Assignment.find({}, { name: 1, submissions: 1 });
+      const assignments = await Assignment.find({}, { name: 1, file: 1, submissions: 1 });
 
       const result = assignments.map(a => {
         const sub = a.submissions.find(s => String(s.studentId) === String(studentId));
@@ -85,6 +83,7 @@ export async function assignmentRoute(req, res) {
         return {
           assignmentId: a._id,
           name: a.name,
+          file: a.file,
           status
         };
       });
@@ -134,8 +133,6 @@ export async function assignmentRoute(req, res) {
       const studentId = req.body?.studentId;
       if (!studentId) return sendJson(res, 400, { error: "Student ID is required" });
 
-      console.log("🧪 Incoming studentId:", studentId);
-
       const cloudResult = await uploadBufferToCloudinary(
         file.buffer,
         `submissions/${Date.now()}-${file.originalname}`
@@ -144,14 +141,11 @@ export async function assignmentRoute(req, res) {
       const assignment = await Assignment.findById(assignmentId);
       if (!assignment) return sendJson(res, 404, { error: "Assignment not found" });
 
-      console.log("📋 Existing submission IDs:", assignment.submissions.map(s => String(s.studentId)));
-
       let submission = assignment.submissions.find(
         s => String(s.studentId) === String(studentId)
       );
 
       if (!submission) {
-        console.warn("⚠️ Student not found in submissions. Creating new entry.");
         submission = {
           studentId,
           name: "Unknown",
@@ -165,7 +159,6 @@ export async function assignmentRoute(req, res) {
       }
 
       await assignment.save();
-      console.log("✅ Submission saved for student:", studentId);
       return sendJson(res, 200, { message: "Assignment submitted", submission });
     }
 
